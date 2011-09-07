@@ -678,6 +678,10 @@ struct kgsl_platform_data kgsl_pdata = {
 	.num_levels_2d = 2,
 	.pwrlevel_3d = {
 		{
+			.gpu_freq = 320000000,
+			.bus_freq = 4,
+		},
+		{
 			.gpu_freq = 266667000,
 			.bus_freq = 3,
 		},
@@ -695,7 +699,7 @@ struct kgsl_platform_data kgsl_pdata = {
 		},
 	},
 	.init_level_3d = 0,
-	.num_levels_3d = 4,
+	.num_levels_3d = 5,
 	.set_grp2d_async = NULL,
 	.set_grp3d_async = NULL,
 	.imem_clk_name = "imem_axi_clk",

@@ -807,13 +807,10 @@ static unsigned int __init select_freq_plan(void)
 	speed_bin = raw_speed_bin & 0xF;
 	if (speed_bin == 0xF)
 		speed_bin = (raw_speed_bin >> 4) & 0xF;
-// faux123: regardless of efuse reading, set to fast for OC
 	if (speed_bin == 0x1) {
-	acpu_freq_tbl = acpu_freq_tbl_fast;
 		max_khz = 1512000;
 	}
 	else {
-	acpu_freq_tbl = acpu_freq_tbl_fast;
 		max_khz = 1512000;
 	}
 

@@ -263,6 +263,7 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 	int i;
 	struct kgsl_device *device;
 	unsigned int nap_allowed_saved;
+	unsigned int idle_pass_saved;
 
 	KGSL_PWR_INFO("suspend start\n");
 
@@ -274,6 +275,8 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 		mutex_lock(&device->mutex);
 		nap_allowed_saved = device->pwrctrl.nap_allowed;
 		device->pwrctrl.nap_allowed = false;
+	        idle_pass_saved = device->pwrctrl.idle_pass;
+	        device->pwrctrl.idle_pass = false;
 		device->requested_state = KGSL_STATE_SUSPEND;
 		/* Make sure no user process is waiting for a timestamp *
 		 * before supending */
@@ -308,6 +311,7 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 		device->state = KGSL_STATE_SUSPEND;
 		device->requested_state = KGSL_STATE_NONE;
 		device->pwrctrl.nap_allowed = nap_allowed_saved;
+		device->pwrctrl.idle_pass = idle_pass_saved;
 
 		mutex_unlock(&device->mutex);
 	}
@@ -331,6 +335,7 @@ static int kgsl_resume(struct platform_device *dev)
 		mutex_lock(&device->mutex);
 		if (device->state == KGSL_STATE_SUSPEND) {
 			device->requested_state = KGSL_STATE_ACTIVE;
+			kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
 			status = device->ftbl.device_start(device, 0);
 			if (status == KGSL_SUCCESS) {
 				device->state = KGSL_STATE_ACTIVE;
@@ -348,10 +353,27 @@ static int kgsl_resume(struct platform_device *dev)
 		}
 		device->requested_state = KGSL_STATE_NONE;
 		mutex_unlock(&device->mutex);
+		kgsl_check_idle(device);
 	}
 	KGSL_PWR_INFO("resume end\n");
 	return status;
 }
+
+void kgsl_early_suspend_driver(struct early_suspend *h)
+{
+       struct kgsl_device *device = container_of(h,
+                                       struct kgsl_device, display_off);
+       kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
+}
+EXPORT_SYMBOL(kgsl_early_suspend_driver);
+
+void kgsl_late_resume_driver(struct early_suspend *h)
+{
+       struct kgsl_device *device = container_of(h,
+                                       struct kgsl_device, display_off);
+       kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_TURBO);
+}
+EXPORT_SYMBOL(kgsl_late_resume_driver);
 
 /* file operations */
 static struct kgsl_process_private *
@@ -1189,17 +1211,16 @@ error:
 #endif /*CONFIG_MSM_KGSL_MMU*/
 
 static int kgsl_get_phys_file(int fd, unsigned long *start, unsigned long *len,
-			      struct file **filep)
+			      unsigned long *vstart, struct file **filep)
 {
 	struct file *fbfile;
 	int put_needed;
-	unsigned long vstart = 0;
 	int ret = 0;
 	dev_t rdev;
 	struct fb_info *info;
 
 	*filep = NULL;
-	if (!get_pmem_file(fd, start, &vstart, len, filep))
+	if (!get_pmem_file(fd, start, vstart, len, filep))
 		return 0;
 
 	fbfile = fget_light(fd, &put_needed);
@@ -1211,6 +1232,7 @@ static int kgsl_get_phys_file(int fd, unsigned long *start, unsigned long *len,
 	if (info) {
 		*start = info->fix.smem_start;
 		*len = info->fix.smem_len;
+		*vstart = (unsigned long)__va(info->fix.smem_start);
 		ret = 0;
 	} else
 		ret = -1;
@@ -1233,7 +1255,7 @@ static int kgsl_ioctl_map_user_mem(struct kgsl_process_private *private,
 	int result = 0;
 	struct kgsl_map_user_mem param;
 	struct kgsl_mem_entry *entry = NULL;
-	unsigned long start = 0, len = 0;
+	unsigned long start = 0, len = 0, vstart = 0;
 	struct file *file_ptr = NULL;
 	uint64_t total_offset;
 
@@ -1252,7 +1274,7 @@ static int kgsl_ioctl_map_user_mem(struct kgsl_process_private *private,
 	switch (param.memtype) {
 	case KGSL_USER_MEM_TYPE_PMEM:
 		if (kgsl_get_phys_file(param.fd, &start,
-					&len, &file_ptr)) {
+					&len, &vstart, &file_ptr)) {
 			KGSL_DRV_ERR("Failed to get pmem region "
 				"with fd(%d) details\n", param.fd);
 			result = -EINVAL;
@@ -1378,6 +1400,13 @@ static int kgsl_ioctl_map_user_mem(struct kgsl_process_private *private,
 	entry->memdesc.hostptr = NULL;
 	/* ensure that MMU mappings are at page boundary */
 	entry->memdesc.physaddr = start + (param.offset & KGSL_PAGEMASK);
+
+	if (param.memtype == KGSL_USER_MEM_TYPE_PMEM)
+		entry->memdesc.hostptr =
+			(void *)(vstart + (param.offset & PAGE_MASK));
+	else
+		entry->memdesc.hostptr = __va(entry->memdesc.physaddr);
+
 	if (param.memtype != KGSL_USER_MEM_TYPE_PMEM) {
 		result = kgsl_mmu_map(private->pagetable,
 				entry->memdesc.physaddr, entry->memdesc.size,
@@ -1673,7 +1702,7 @@ static int kgsl_mmap(struct file *file, struct vm_area_struct *vma)
 		result = -EINVAL;
 		goto done;
 	}
-	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 	result = remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
 				vma_size, vma->vm_page_prot);

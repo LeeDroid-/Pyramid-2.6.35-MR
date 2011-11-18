@@ -46,6 +46,7 @@ struct kgsl_g12_device {
 	wait_queue_head_t wait_timestamp_wq;
 	struct kgsl_g12_ringbuffer ringbuffer;
 	spinlock_t cmdwin_lock;
+	struct early_suspend display_off;
 };
 
 irqreturn_t kgsl_g12_isr(int irq, void *data);

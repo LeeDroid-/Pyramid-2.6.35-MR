@@ -31,7 +31,7 @@
 #include "kgsl_yamato.h"
 
 #define INVALID_RB_CMD 0xaaaaaaaa
-#define KGSL_TEST_VERSION "SBA 42"
+#define KGSL_TEST_VERSION "SBA 43 fix by show-p1984"
 
 struct pm_id_name {
 	uint32_t id;
@@ -809,11 +809,12 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 			uint32_t ib_size = rb_copy[read_idx++];
 			dump_ib1(device, pt_base, (read_idx-3)<<2, ib_addr,
 				ib_size, &ib_list, 0);
-			for (; i < ib_list.count; ++i)
-				dump_ib(device, "IB2:", pt_base,
+//			for (; i < ib_list.count; ++i)
+/*				dump_ib(device, "IB2:", pt_base,
 					ib_list.offsets[i],
 					ib_list.bases[i],
 					ib_list.sizes[i], 0);
+*/
 		}
 	}
 
@@ -832,22 +833,24 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 				uint32_t ib_addr = rb_copy[read_idx+1];
 				uint32_t ib_size = rb_copy[read_idx+2];
 				if (ib_size && cp_ib1_base == ib_addr) {
-					KGSL_LOG_DUMP("IB1: base:%8.8X  "
+/*					KGSL_LOG_DUMP("IB1: base:%8.8X  "
 						"count:%d\n", ib_addr, ib_size);
 					dump_ib(device, "IB1: ", pt_base,
 						read_idx<<2, ib_addr, ib_size,
 						1);
+*/
 				}
 			}
 		}
 		for (i = 0; i < ib_list.count; ++i) {
 			if (cp_ib2_bufsz && cp_ib2_base == ib_list.bases[i]) {
-				uint32_t ib_size = ib_list.sizes[i];
+/*				uint32_t ib_size = ib_list.sizes[i];
 				uint32_t ib_offset = ib_list.offsets[i];
 				KGSL_LOG_DUMP("IB2: base:%8.8X  count:%d\n",
 					cp_ib2_base, ib_size);
 				dump_ib(device, "IB2: ", pt_base, ib_offset,
 					ib_list.bases[i], ib_size, 1);
+*/
 			}
 		}
 	}

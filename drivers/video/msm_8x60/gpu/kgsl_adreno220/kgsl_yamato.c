@@ -96,6 +96,13 @@ static struct kgsl_yamato_device yamato_device = {
 		.mutex = __MUTEX_INITIALIZER(yamato_device.dev.mutex),
 		.state = KGSL_STATE_INIT,
 		.active_cnt = 0,
+#ifdef CONFIG_HAS_EARLYSUSPEND
+		.display_off = {
+			.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
+			.suspend = kgsl_early_suspend_driver,
+			.resume = kgsl_late_resume_driver,
+		},
+#endif
 	},
 	.gmemspace = {
 		.gpu_base = 0,
@@ -107,7 +114,6 @@ static struct kgsl_yamato_device yamato_device = {
 
 /* max msecs to wait for gpu to finish its operation(s) */
 #define MAX_WAITGPU_SECS (HZ + HZ/2)
-
 
 static int kgsl_yamato_start(struct kgsl_device *device,
 						unsigned int init_ram);
@@ -783,7 +789,7 @@ static int kgsl_yamato_start(struct kgsl_device *device, unsigned int init_ram)
 	int status = -EINVAL;
 	struct kgsl_yamato_device *yamato_device = KGSL_YAMATO_DEVICE(device);
 	int init_reftimestamp = 0x7fffffff;
-	unsigned int override1, override2, i;
+	unsigned int override1 = 0, override2 = 0, i = 0;
 
 	KGSL_DRV_VDBG("enter (device=%p)\n", device);
 
@@ -849,23 +855,28 @@ static int kgsl_yamato_start(struct kgsl_device *device, unsigned int init_ram)
 	kgsl_yamato_regwrite(device, REG_SQ_VS_PROGRAM, 0x00000000);
 	kgsl_yamato_regwrite(device, REG_SQ_PS_PROGRAM, 0x00000000);
 
-
-	kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE1, 0);
-	if (device->chip_id != KGSL_CHIPID_LEIA_REV470)
+	if (device->chip_id != KGSL_CHIPID_LEIA_REV470){
+		kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE1, 0);
 		kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE2, 0);
+	}
 	else{
-		i = 3; /*try writing override1 & 2, three times.*/
-		while(i){
+		/* This was rewrote for better performance
+		 * by show-p1984 <showp1984@gmail.com>
+		 * try writing override1 & 2, cancel if successful
+		 * max three times.
+		 */
+		while((((override1 & 0x7BFFFFFA) != 0x7BFFFFFA) &&
+				((override2 & 0x000001F4) != 0x000001F4)) && i < 3){
 			kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE1, 0x7BFFFFFA);
 			kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE1, &override1);
 			kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE2, 0x000001F4);
 			kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE2, &override2);
-			if (((override1 & 0x7BFFFFFA) == 0x7BFFFFFA) &&
-				((override2 & 0x000001F4) == 0x000001F4))
-				break;
-			KGSL_DRV_ERR("OVERRIDE1 = 0x%x, OVERRIDE2 = 0x%x !!\n",
-								override1, override2);
-			i--;
+			i++;
+			if (i==2) {
+				if (((override1 & 0x7BFFFFFA) != 0x7BFFFFFA) &&
+					((override2 & 0x000001F4) != 0x000001F4))
+				KGSL_DRV_ERR("OVERRIDE1 = 0x%x, OVERRIDE2 = 0x%x !!\n",	override1, override2);
+			}
 		}
         }
 

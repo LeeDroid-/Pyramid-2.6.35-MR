@@ -115,6 +115,13 @@ static struct kgsl_g12_device device_2d0 = {
 	.iomemname = "kgsl_2d0_reg_memory",
 	.irqname = "kgsl_2d0_irq",
 	.regulator = "fs_gfx2d0",
+                .display_off = {
+#ifdef CONFIG_HAS_EARLYSUSPEND
+                        .level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
+                        .suspend = kgsl_early_suspend_driver,
+                        .resume = kgsl_late_resume_driver,
+#endif
+                },
 };
 
 static struct kgsl_g12_device device_2d1 = {
@@ -140,6 +147,13 @@ static struct kgsl_g12_device device_2d1 = {
 	.iomemname = "kgsl_2d1_reg_memory",
 	.irqname = "kgsl_2d1_irq",
 	.regulator = "fs_gfx2d1",
+                .display_off = {
+#ifdef CONFIG_HAS_EARLYSUSPEND
+                        .level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
+                        .suspend = kgsl_early_suspend_driver,
+                        .resume = kgsl_late_resume_driver,
+#endif
+                },
 };
 
 irqreturn_t kgsl_g12_isr(int irq, void *data)
@@ -549,8 +563,10 @@ static int kgsl_g12_start(struct kgsl_device *device, unsigned int init_ram)
 	device->requested_state = KGSL_STATE_NONE;
 	KGSL_PWR_INFO("state -> INIT, device %d\n", device->id);
 
-	kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_ON);
+        /* Turn the clocks on before the power.  Required for some platforms,
+                has no adverse effect on the others */
 	kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_CLK_ON);
+	kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_ON);
 	kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_ON);
 
 	/* Set up MH arbiter.  MH offsets are considered to be dword

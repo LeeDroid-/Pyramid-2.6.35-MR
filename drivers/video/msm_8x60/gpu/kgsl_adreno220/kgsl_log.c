@@ -40,11 +40,11 @@ unsigned int kgsl_cff_dump_enable;
 #ifdef CONFIG_MSM_KGSL_MMU
 unsigned int kgsl_cache_enable;
 #endif
-
+#ifdef CONFIG_DEBUG_FS
 static uint32_t kgsl_ib_base;
 static uint32_t kgsl_ib_size;
 
-#ifdef CONFIG_DEBUG_FS
+
 static int kgsl_log_set(unsigned int *log_val, void *data, u64 val)
 {
 	*log_val = min((unsigned int)val, (unsigned int)KGSL_LOG_LEVEL_MAX);
